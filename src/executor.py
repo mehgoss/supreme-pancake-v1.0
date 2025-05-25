@@ -1,4 +1,4 @@
-J"""Trade executor for managing trading operations"""
+"""Trade executor for managing trading operations"""
 
 import os
 import sys
