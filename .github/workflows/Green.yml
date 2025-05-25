@@ -42,8 +42,8 @@ jobs:
       env:
         CHAT_ID: ${{ secrets.CHAT_ID }}
         TOKEN: ${{ secrets.TOKEN }}
-        API_KEY: ${{ secrets.API_KEY }}
-        API_SECRET: ${{ secrets.API_SECRET }}
+        BITMEX_API_KEY: ${{ secrets.BITMEX_API_KEY }}
+        BITMEX_API_SECRET: ${{ secrets.BITMEX_API_SECRET }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         MAX_RUNTIME: 1800 # 30 minutes in seconds
       run: |
