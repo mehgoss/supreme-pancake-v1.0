@@ -39,6 +39,7 @@ class TradeExecutor:
         self.risk_per_trade = risk_per_trade
         self.logger, self.bot = configure_logging(telegram_token, telegram_chat_id) if telegram_token and telegram_chat_id else (log, None)
         self.symbol = symbol 
+        self.df = pd.DataFrame() 
         if not self.logger:
             self.logger = logging.getLogger(__name__)
             logging.basicConfig(level=logging.INFO)
@@ -504,7 +505,7 @@ class TradeExecutor:
                     time.sleep(scan_interval)
                     iteration += 1
                     continue
-                
+                self.df = market_data
                 # Sync open orders and positions
                 self.sync_open_orders()
                 
