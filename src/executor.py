@@ -30,7 +30,7 @@ elif hasattr(sys, 'stdout'):
 load_dotenv()
 class TradeExecutor:
     def __init__(self, exchange: BaseExchange, risk_per_trade: float = 0.01, 
-                 lookback_period: int = 40, fvg_threshold: float = 0.0003, rr :float = 0.01, symbol = 'SOLUSD' 
+                 lookback_period: int = 40, fvg_threshold: float = 0.0003, rr :float = 0.01, symbol = 'SOLUSD', 
                  telegram_token: Optional[str] = None, telegram_chat_id: Optional[str] = None, tolarance :float = 0.005, 
                  log: Optional[logging.Logger] = None):
         """Initialize trade executor with exchange and strategy"""
