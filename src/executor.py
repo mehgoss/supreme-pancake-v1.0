@@ -1,4 +1,4 @@
-"""Trade executor for managing trading operations"""
+J"""Trade executor for managing trading operations"""
 
 import os
 import sys
@@ -30,15 +30,15 @@ elif hasattr(sys, 'stdout'):
 load_dotenv()
 class TradeExecutor:
     def __init__(self, exchange: BaseExchange, risk_per_trade: float = 0.01, 
-                 lookback_period: int = 40, fvg_threshold: float = 0.0003, rr :float = 0.01,
-                 telegram_token: Optional[str] = None, telegram_chat_id: Optional[str] = None, tolarance :float = 0.005,
+                 lookback_period: int = 40, fvg_threshold: float = 0.0003, rr :float = 0.01, symbol = 'SOLUSD' 
+                 telegram_token: Optional[str] = None, telegram_chat_id: Optional[str] = None, tolarance :float = 0.005, 
                  log: Optional[logging.Logger] = None):
         """Initialize trade executor with exchange and strategy"""
         self.exchange = exchange
         self.tolarance = tolarance
         self.risk_per_trade = risk_per_trade
         self.logger, self.bot = configure_logging(telegram_token, telegram_chat_id) if telegram_token and telegram_chat_id else (log, None)
-        
+        self.symbol = symbol 
         if not self.logger:
             self.logger = logging.getLogger(__name__)
             logging.basicConfig(level=logging.INFO)
