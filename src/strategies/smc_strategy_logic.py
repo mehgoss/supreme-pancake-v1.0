@@ -20,6 +20,7 @@ class MatteGreenStrategy(BaseStrategy):
         self.choch_points = []
         self.bos_points = []
         self.fvg_areas = []
+        self.current_trades = [] 
         self.market_bias = 'neutral'
         self.rr_ratio = rr_ratio
         self.risk_per_trade = risk_per_trade
