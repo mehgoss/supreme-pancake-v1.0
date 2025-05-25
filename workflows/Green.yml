@@ -1,0 +1,62 @@
+name: BitMEX v Strategy Backtest
+
+on:
+  # Manual trigger - use this to start a new session
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - develop
+  # Scheduled trigger every 10 minutes
+  schedule:
+    - cron: '*/60 * * * *'  # Run every 1 hour
+
+permissions:
+  contents: read
+  actions: write  # Needed to check for running workflows
+
+concurrency:
+  group: trading-strategy
+  cancel-in-progress: true
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55  # Maximum runtime of 50 minutes
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: "3.12"
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    
+    - name: Run trading backtest
+      env:
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+        TOKEN: ${{ secrets.TOKEN }}
+        API_KEY: ${{ secrets.API_KEY }}
+        API_SECRET: ${{ secrets.API_SECRET }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        MAX_RUNTIME: 1800 # 30 minutes in seconds
+      run: |
+        python App.py
+
+    - name: Notify on Failure
+      if: failure()
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.CHAT_ID }}
+        token: ${{ secrets.TOKEN }}
+        message: |
+          ❌ BitMEX Trading Strategy Backtest Failed
+          Repository: ${{ github.repository }}
+          Event: ${{ github.event_name }}
+          Ref: ${{ github.ref }}
