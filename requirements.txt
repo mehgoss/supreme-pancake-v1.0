@@ -6,6 +6,7 @@ telegram
 # Trading and Financial Libraries
 bitmex
 yfinance
+alpaca-py
 
 # Data Manipulation and Visualization
 matplotlib
