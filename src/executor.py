@@ -351,9 +351,9 @@ class TradeExecutor:
                         if len(new_clord_id) > 36:
                             self.logger.error(f"clOrdID exceeds 36 characters: {new_clord_id}")
                             raise ValueError(f"clOrdID exceeds 36 characters: {new_clord_id}")
-                        self.api.close_position(side=side, quantity=size, order_type="Market", 
+                        order = self.api.close_position(side=side, quantity=size, order_type="Market", 
                                                 clOrdID=new_clord_id, text=new_text)
-                        self.logger.info(f"Closed position via API: {new_clord_id}")
+                        self.logger.info(f"Closed position via API: {new_clord_id} \n order:{order}")
                     else:
                         if clord_id is None:
                             self.logger.warning(f"No valid clOrdID for trade, skipping manual close.")
@@ -401,26 +401,29 @@ class TradeExecutor:
 
     def manage_positions(self, current_data):
         """Check and manage existing positions"""
-        signals = []
+        signals = None
         current_idx = len(current_data) - 1
-        for trade in list(self.current_trades):
-            trade_id, idx, entry_price, direction, stop_loss, take_profit, size, clord_id, text, sl_orderID, tp_orderID = trade
-            if (direction == 'long' and self.df['low'].iloc[current_idx] <= stop_loss) or \
-               (direction == 'short' and self.df['high'].iloc[current_idx] >= stop_loss):
-                pl = (stop_loss - entry_price) * size if direction == 'long' else (entry_price - stop_loss) * size
-                self.current_balance += pl
-                self.trades.append({'entry_idx': idx, 'exit_idx': current_idx, 'entry_price': entry_price,
-                                    'exit_price': round(stop_loss, 4), 'direction': direction, 'pl': pl, 'result': 'loss', 'trade_id': trade_id})
-                signals.append({'action': 'exit', 'price': stop_loss, 'reason': 'stoploss', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
-                self.execute_exit({'action': 'exit', 'price': stop_loss, 'reason': 'stoploss', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
-            elif (direction == 'long' and self.df['high'].iloc[current_idx] >= take_profit) or \
-                 (direction == 'short' and self.df['low'].iloc[current_idx] <= take_profit):
-                pl = (take_profit - entry_price) * size if direction == 'long' else (entry_price - take_profit) * size
-                self.current_balance += pl
-                self.trades.append({'entry_idx': idx, 'exit_idx': current_idx, 'entry_price': round(entry_price, 2),
-                                    'exit_price': round(take_profit, 4), 'direction': direction, 'pl': pl, 'result': 'win', 'trade_id': trade_id})
-                signals.append({'action': 'exit', 'price': take_profit, 'reason': 'takeprofit', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
-                self.execute_exit({'action': 'exit', 'price': take_profit, 'reason': 'takeprofit', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
+        positions = self.api.get_positions()
+        if positions != None:
+            signals = []
+            for trade in list(self.current_trades):
+                trade_id, idx, entry_price, direction, stop_loss, take_profit, size, clord_id, text, sl_orderID, tp_orderID = trade
+                if (direction == 'long' and self.df['low'].iloc[current_idx] <= stop_loss) or \
+                   (direction == 'short' and self.df['high'].iloc[current_idx] >= stop_loss):
+                    pl = (stop_loss - entry_price) * size if direction == 'long' else (entry_price - stop_loss) * size
+                    self.current_balance += pl
+                    self.trades.append({'entry_idx': idx, 'exit_idx': current_idx, 'entry_price': entry_price,
+                                        'exit_price': round(stop_loss, 4), 'direction': direction, 'pl': pl, 'result': 'loss', 'trade_id': trade_id})
+                    signals.append({'action': 'exit', 'price': stop_loss, 'reason': 'stoploss', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
+                    self.execute_exit({'action': 'exit', 'price': stop_loss, 'reason': 'stoploss', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
+                elif (direction == 'long' and self.df['high'].iloc[current_idx] >= take_profit) or \
+                     (direction == 'short' and self.df['low'].iloc[current_idx] <= take_profit):
+                    pl = (take_profit - entry_price) * size if direction == 'long' else (entry_price - take_profit) * size
+                    self.current_balance += pl
+                    self.trades.append({'entry_idx': idx, 'exit_idx': current_idx, 'entry_price': round(entry_price, 2),
+                                        'exit_price': round(take_profit, 4), 'direction': direction, 'pl': pl, 'result': 'win', 'trade_id': trade_id})
+                    signals.append({'action': 'exit', 'price': take_profit, 'reason': 'takeprofit', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
+                    self.execute_exit({'action': 'exit', 'price': take_profit, 'reason': 'takeprofit', 'direction': direction, 'entry_idx': idx, 'trade_id': trade_id})
         return signals
 
     def calculate_position_size(self, entry_price, stop_loss):
@@ -485,79 +488,82 @@ class TradeExecutor:
         self.logger.info(f"Starting TradeExecutor at {sast_now.strftime('%Y-%m-%d %H:%M:%S')}")
         
         iteration = 0
-        while (time.time() - start_time) < max_runtime_minutes * 60:
+        while (time.time() - start_time) < max_runtime_minutes * 60 or iteration == 20:
             sast_now = get_sast_time()
-            self.logger.info(f"🤔📈🕵🏽‍♂️🔍🔎Scan {iteration + 1} started at {sast_now.strftime('%Y-%m-%d %H:%M:%S')}")
-            
-            try:
-                # Get market data
-                market_data = self.exchange.get_candle(timeframe="5m", count=self.strategy.lookback_period + 20)
-                # Ensure market_data index is a DatetimeIndex
-                if market_data is not None and not isinstance(market_data.index, pd.DatetimeIndex):
-                    # Try common timestamp columns
-                    for col in ["timestamp", "date", "datetime", "time"]:
-                        if col in market_data.columns:
-                            market_data[col] = pd.to_datetime(market_data[col], errors='coerce')
-                            market_data = market_data.set_index(col)
-                            break
-                if market_data is None or len(market_data) < self.strategy.lookback_period:
-                    self.logger.warning(f"Insufficient data: {len(market_data) if market_data is not None else 0} candles")
-                    time.sleep(scan_interval)
-                    iteration += 1
-                    continue
-                self.df = market_data
-                # Sync open orders and positions
-                self.sync_open_orders()
-                
-                # Get strategy signals
-                strategy_signals = self.strategy.analyze_market_data(market_data, self.current_balance)
-                
-                # Manage existing positions
-                exit_signals = self.manage_positions(market_data)
-                
-                # Process exit signals first
-                for signal in exit_signals:
-                    self.execute_exit(signal)
-                
-                # Process entry signals
-                if len(self.current_trades) <= 3 :
-                    for signal in strategy_signals:
-                        if signal['action'] == 'entry' and len(self.current_trades) < 3:
-                            # Calculate position size
-                            size = self.calculate_position_size(signal['price'], signal['stop_loss'])
-                            signal['position_size'] = size
-                            self.execute_entry(signal)
-                
-                # Update performance metrics
-                profile = self.exchange.get_profile_info()
-                if profile:
-                    self.current_balance = profile['balance']['bitmex_usd']
-                    self.equity_curve.append(self.current_balance)
-                
-                # Send visualization if telegram bot is configured
-                if self.bot and iteration % 2 == 0:
-                    fig = self.visualize_results(start_idx=max(0, len(market_data) - 48))
-                    if fig:
-                        caption = (f"📸Scan {iteration+1}\n"
-                                f"Timestamp: {sast_now.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                                f"Balance: ${self.current_balance:.2f}\n"
-                                f"Price @ ${market_data['close'].iloc[-1]}\n"
-                                f"Market Bias: {self.strategy.market_bias}")
-                        self.bot.send_photo(fig=fig, caption=caption)
-                
-                self.logger.info(f"Price @ ${market_data['close'].iloc[-1]} \n\n 😪😪😪 Sleeping for {scan_interval/60} minutes....")
-            
-            except Exception as e:
-                self.logger.error(f"An error occurred during trading: {str(e)}")
-            
-            time.sleep(scan_interval)
-            iteration += 1
-            
-            if iteration % iterations_before_sleep == 0 and iteration > 0:
-                self.logger.info(f"Pausing for {sleep_interval_minutes} minutes...")
-                time.sleep(sleep_interval_minutes * 60)
-                self.logger.info("🙋🏾‍♂️Resuming...")
-        
+            for i in range(20):
+                self.logger.info(f"🤔📈🕵🏽‍♂️🔍🔎Scan {iteration + 1}(i={i}) started at {sast_now.strftime('%Y-%m-%d %H:%M:%S')}")
+                try:
+                    # Get market data
+                    market_data = self.exchange.get_candle(timeframe="5m", count=self.strategy.lookback_period + 20)
+                    # Ensure market_data index is a DatetimeIndex
+                    if market_data is not None and not isinstance(market_data.index, pd.DatetimeIndex):
+                        # Try common timestamp columns
+                        for col in ["timestamp", "date", "datetime", "time"]:
+                            if col in market_data.columns:
+                                market_data[col] = pd.to_datetime(market_data[col], errors='coerce')
+                                market_data = market_data.set_index(col)
+                                break
+                    if market_data is None or len(market_data) < self.strategy.lookback_period:
+                        self.logger.warning(f"Insufficient data: {len(market_data) if market_data is not None else 0} candles")
+                        time.sleep(scan_interval)
+                        iteration += 1
+                        continue
+                    self.df = market_data
+                    # Sync open orders and positions
+                    self.sync_open_orders()
+
+                    # Get strategy signals
+                    strategy_signals = self.strategy.analyze_market_data(market_data, self.current_balance)
+
+                    # Manage existing positions
+                    exit_signals = self.manage_positions(market_data)
+
+                    # Process exit signals first
+                    if exit_signals != None:
+                        for signal in exit_signals:
+                            self.execute_exit(signal)
+
+                    # Process entry signals
+                    if len(self.current_trades) <= 3 :
+                        for signal in strategy_signals:
+                            if signal['action'] == 'entry' and len(self.current_trades) < 3:
+                                # Calculate position size
+                                size = self.calculate_position_size(signal['price'], signal['stop_loss'])
+                                signal['position_size'] = size
+                                self.execute_entry(signal)
+
+                    # Update performance metrics
+                    profile = self.exchange.get_profile_info()
+                    if profile:
+                        self.current_balance = profile['balance']['bitmex_usd']
+                        self.equity_curve.append(self.current_balance)
+
+                    # Send visualization if telegram bot is configured
+                    if self.bot:
+                        fig = self.visualize_results(start_idx=max(0, len(market_data) - 48))
+                        if fig:
+                            caption = (f"📸Scan {iteration+1}(i={i})\n"
+                                    f"Timestamp: {sast_now.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                                    f"Balance: ${self.current_balance:.2f}\n"
+                                    f"Price @ ${market_data['close'].iloc[-1]}\n"
+                                    f"Market Bias: {self.strategy.market_bias}"
+                                    f"meta data: {profile['balance']}")
+                            self.bot.send_photo(fig=fig, caption=caption)
+
+                    self.logger.info(f"(i={i})\nPrice @ ${market_data['close'].iloc[-1]} \n\n 😪😪😪 Sleeping for {scan_interval/60} minutes....")
+
+                except Exception as e:
+                    self.logger.error(f"(i={i})\\An error occurred during trading: {str(e)}")
+
+                time.sleep(scan_interval)
+                iteration += 1
+
+                if iteration % iterations_before_sleep == 0 and iteration > 0:
+                    self.logger.info(f"Pausing for {sleep_interval_minutes} minutes...")
+                    time.sleep(sleep_interval_minutes * 60)
+                    self.logger.info("🙋🏾‍♂️Resuming...")
+            self.logger.info(f"TradeExecutor run completed. Final balance: ${self.current_balance:.2f} with {iteration}....")
+
         self.logger.info(f"TradeExecutor run completed. Final balance: ${self.current_balance:.2f}")
 
 
