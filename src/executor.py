@@ -546,7 +546,7 @@ class TradeExecutor:
                                     f"Timestamp: {sast_now.strftime('%Y-%m-%d %H:%M:%S')}\n"
                                     f"Balance: ${self.current_balance:.2f}\n"
                                     f"Price @ ${market_data['close'].iloc[-1]}\n"
-                                    f"Market Bias: {self.strategy.market_bias}"
+                                    f"Market Bias: {self.strategy.market_bias}\n"
                                     f"meta data: {profile['balance']}")
                             self.bot.send_photo(fig=fig, caption=caption)
 
