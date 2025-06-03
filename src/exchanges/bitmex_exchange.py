@@ -151,7 +151,7 @@ class BitMEXExchange(BaseExchange):
             # Handle stop loss if provided
             if "stop_loss_price" in kwargs:
                 sl_params = order_params.copy()
-                sl_params["stopPx"] = kwargs["stop_loss_price"]
+                sl_params["stopPx"] = round(kwargs["stop_loss_price"],2)
                 sl_params["ordType"] = "Stop"
                 sl_params["execInst"] = "Close"
                 sl_params["side"] = "Sell" if side == "Buy" else "Buy"
@@ -160,7 +160,7 @@ class BitMEXExchange(BaseExchange):
             # Handle take profit if provided
             if "take_profit_price" in kwargs:
                 tp_params = order_params.copy()
-                tp_params["stopPx"] = kwargs["take_profit_price"]
+                tp_params["stopPx"] = round(kwargs["take_profit_price"], 2)
                 tp_params["ordType"] = "MarketIfTouched"
                 tp_params["side"] = "Sell" if side == "Buy" else "Buy"
                 result["take_profit"] = self.client.Order.Order_new(**tp_params).result()[0]
@@ -171,6 +171,11 @@ class BitMEXExchange(BaseExchange):
             return None
 
     def close_position(self, side: str, quantity: int, order_type: str = "Market", **kwargs) -> Dict[str, Any]:
+        positions = self.get_positions()
+        if not positions:
+            self.logger.info("No positions to close")
+            return None
+
         try:
             order_params = {
                 "symbol": self.symbol,
@@ -187,14 +192,19 @@ class BitMEXExchange(BaseExchange):
                 order_params["text"] = kwargs["text"]
 
             order = self.client.Order.Order_new(**order_params).result()[0]
+            self.logger.info(f"Closed order :\n{order}\n")
             return order
         except Exception as e:
             self.logger.error(f"Error closing position: {str(e)}")
             return None
 
     def close_all_positions(self, **kwargs) -> bool:
+        positions = self.get_positions()
+        if not positions:
+            self.logger.info("No positions to close")
+            return None
+
         try:
-            positions = self.get_positions()
             for pos in positions:
                 if pos['currentQty'] != 0:
                     side = "Sell" if pos['currentQty'] > 0 else "Buy"
