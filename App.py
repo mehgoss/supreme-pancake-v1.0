@@ -29,6 +29,7 @@ def main():
     config = get_config()
     logger , _ = configure_logging(os.getenv('TOKEN'),os.getenv('CHAT_ID'))
     exchange = ExchangeFactory.create_exchange(config, logger)
+    logger.info("Starting bot v1. 0")
     Bot_Trader = TradeExecutor(
         exchange =exchange, 
         risk_per_trade = 0.01, 
