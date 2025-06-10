@@ -3,6 +3,8 @@ import json
 import logging
 import pandas as pd
 import bitmex
+import asyncio
+import websockets
 from datetime import datetime
 from .base_exchange import BaseExchange
 
@@ -68,37 +70,92 @@ class BitMEXExchange(BaseExchange):
             self.logger.error(f"Error getting profile information: {str(e)}")
             return None
 
+    async def _build_candles(self, symbol: str, timeframe: str, count: int) -> List[Dict[str, Any]]:
+        """Build candles from WebSocket trade stream."""
+        uri = f"wss://{'testnet' if self.client.test else 'www'}.bitmex.com/realtime?subscribe=trade:{symbol}"
+        candles = []
+        batch = []
+        last_ts = None
+        timeframe_seconds = {
+            '1m': 60,
+            '5m': 300,
+            '1h': 3600,
+            '1d': 86400
+        }.get(timeframe)
+        if not timeframe_seconds:
+            raise ValueError(f"Invalid timeframe. Supported: {', '.join(timeframe_seconds.keys())}")
+
+        try:
+            async with websockets.connect(uri) as ws:
+                while len(candles) < count:
+                    msg = await ws.recv()
+                    data = json.loads(msg)
+                    for trade in data.get('data', []):
+                        try:
+                            ts = datetime.strptime(trade['timestamp'], "%Y-%m-%dT%H:%M:%S.%fZ")
+                            # Align timestamp to timeframe boundary
+                            ts = ts.replace(second=0, microsecond=0)
+                            if timeframe == '1h':
+                                ts = ts.replace(minute=0)
+                            elif timeframe == '1d':
+                                ts = ts.replace(hour=0, minute=0)
+
+                            if last_ts is None:
+                                last_ts = ts
+
+                            if ts > last_ts:
+                                # Finalize candle
+                                if batch:
+                                    candle = {
+                                        'timestamp': last_ts,
+                                        'open': batch[0]['price'],
+                                        'high': max(t['price'] for t in batch),
+                                        'low': min(t['price'] for t in batch),
+                                        'close': batch[-1]['price'],
+                                        'volume': sum(t['size'] for t in batch)
+                                    }
+                                    candles.append(candle)
+                                    self.logger.debug(f"Built candle: {candle}")
+                                    batch = []
+                                    last_ts = ts
+
+                            batch.append(trade)
+                        except Exception as e:
+                            self.logger.error(f"Error processing trade: {str(e)}")
+
+                    # Trim candles to desired count
+                    if len(candles) >= count:
+                        candles = candles[-count:]
+                        break
+
+        except Exception as e:
+            self.logger.error(f"WebSocket error: {str(e)}")
+            return []
+
+        return candles
+
     def get_candle(self, timeframe: Optional[str] = None, count: int = 100) -> Optional[pd.DataFrame]:
+        """Retrieve candlestick data using WebSocket trade stream."""
         timeframe = timeframe or self.timeframe
         try:
             valid_timeframes = ['1m', '5m', '1h', '1d']
             if timeframe not in valid_timeframes:
                 raise ValueError(f"Invalid timeframe. Supported: {', '.join(valid_timeframes)}")
 
-            candles = self.client.Trade.Trade_getBucketed(
-                symbol=self.symbol,
-                binSize=timeframe,
-                count=count,
-                reverse=True
-            ).result()[0]
+            # Run async candle builder
+            candles = asyncio.run(self._build_candles(self.symbol, timeframe, count))
 
             if not candles:
-                raise ValueError("No candle data returned")
+                self.logger.warning("No candle data retrieved")
+                return None
 
-            formatted_candles = [{
-                'timestamp': candle['timestamp'],
-                'open': candle['open'],
-                'high': candle['high'],
-                'low': candle['low'],
-                'close': candle['close'],
-                'volume': candle['volume']
-            } for candle in candles if all(key in candle for key in ['open', 'high', 'low', 'close'])]
-
-            df = pd.DataFrame(formatted_candles)
+            # Convert to DataFrame
+            df = pd.DataFrame(candles)
             df['timestamp'] = pd.to_datetime(df['timestamp'])
             df = df.sort_values('timestamp').reset_index(drop=True)
 
             return df
+
         except Exception as e:
             self.logger.error(f"Error retrieving candle data: {str(e)}")
             return None
