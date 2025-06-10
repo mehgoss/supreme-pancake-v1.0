@@ -488,7 +488,7 @@ class TradeExecutor:
         self.logger.info(f"Starting TradeExecutor at {sast_now.strftime('%Y-%m-%d %H:%M:%S')}")
         
         iteration = 0
-        while (time.time() - start_time) < max_runtime_minutes * 60 or iteration == 10:
+        while (time.time() - start_time) < max_runtime_minutes * 60 :
             sast_now = get_sast_time()
             for i in range(20):
                 self.logger.info(f"🤔📈🕵🏽‍♂️🔍🔎Scan {iteration + 1}(i={i}) started at {sast_now.strftime('%Y-%m-%d %H:%M:%S')}")
