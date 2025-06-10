@@ -9,8 +9,8 @@ load_dotenv()
 def get_config():
     """Helper to create a test exchange config from env vars with test mode enabled."""
     exchange_type = os.getenv('EXCHANGE', 'bitmex')
-    api_key = os.getenv('BITMEX_API_KEY') if exchange_type == 'bitmex' else os.getenv('ALPACA_API_KEY')
-    api_secret = os.getenv('BITMEX_API_SECRET') if exchange_type == 'bitmex' else os.getenv('ALPACA_API_SECRET')
+    api_key = os.getenv('ALPACA_API_KEY') if exchange_type == 'alpaca' else os.getenv('ALPACA_API_KEY')
+    api_secret = os.getenv('ALPACA_API_SECRET') if exchange_type == 'alpaca' else os.getenv('ALPACA_API_SECRET')
     symbol = os.getenv('SYMBOL', 'SOL-USD')
     timeframe = os.getenv('TIMEFRAME', '5m')
     test = True  # Always test mode
