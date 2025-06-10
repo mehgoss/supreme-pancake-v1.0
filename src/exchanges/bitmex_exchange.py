@@ -72,7 +72,7 @@ class BitMEXExchange(BaseExchange):
 
     async def _build_candles(self, symbol: str, timeframe: str, count: int) -> List[Dict[str, Any]]:
         """Build candles from WebSocket trade stream."""
-        base_url = 'testnet.bitmex.com' if self.test else 'www.bitmex.com'
+        base_url = 'testnet.bitmex.com'
         uri = f"wss://{base_url}/realtime?subscribe=trade:{symbol}"
         candles = []
         batch = []
