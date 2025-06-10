@@ -69,10 +69,9 @@ class BitMEXExchange(BaseExchange):
         except Exception as e:
             self.logger.error(f"Error getting profile information: {str(e)}")
             return None
-
-    async def _build_candles(self, symbol: str, timeframe: str, count: int) -> List[Dict[str, Any]]:
-        """Build candles from WebSocket trade stream."""
-        base_url = 'testnet.bitmex.com'
+    async def _build_candles(self, symbol: str, timeframe: str, count: int, timeout: int = 300) -> List[Dict[str, Any]]:
+        """Build candles from WebSocket trade stream with extended timeout."""
+        base_url = 'testnet.bitmex.com' 
         uri = f"wss://{base_url}/realtime?subscribe=trade:{symbol}"
         candles = []
         batch = []
@@ -82,13 +81,14 @@ class BitMEXExchange(BaseExchange):
             '5m': 300,
             '1h': 3600,
             '1d': 86400
-        }.get(timeframe)
-        if not timeframe_seconds:
+        }
+        if timeframe not in timeframe_seconds:
             raise ValueError(f"Invalid timeframe. Supported: {', '.join(timeframe_seconds.keys())}")
 
         try:
             async with websockets.connect(uri, ping_interval=30, ping_timeout=60) as ws:
                 self.logger.info(f"Connected to WebSocket: {uri}")
+                start_time = asyncio.get_event_loop().time()
                 while len(candles) < count:
                     try:
                         msg = await asyncio.wait_for(ws.recv(), timeout=60)
@@ -130,21 +130,29 @@ class BitMEXExchange(BaseExchange):
                         if len(candles) >= count:
                             candles = candles[-count:]
                             break
+
+                        # Check for total timeout
+                        if asyncio.get_event_loop().time() - start_time > timeout:
+                            self.logger.warning(f"Total timeout ({timeout}s) reached, stopping with {len(candles)} candles")
+                            break
+
                     except asyncio.TimeoutError:
-                        self.logger.warning("WebSocket receive timeout, continuing...")
+                        self.logger.debug("WebSocket receive timeout, continuing...")
                         continue
                     except websockets.exceptions.ConnectionClosed:
-                        self.logger.error("WebSocket connection closed, attempting to reconnect...")
+                        self.logger.error("WebSocket connection closed, stopping...")
                         break
 
         except Exception as e:
             self.logger.error(f"WebSocket error: {str(e)}")
             return []
 
+        if not candles:
+            self.logger.warning(f"No candles built for {symbol}. Verify symbol is active on {'testnet' if self.test else 'mainnet'}.")
         return candles
 
-    def get_candle(self, timeframe: Optional[str] = None, count: int = 100) -> Optional[pd.DataFrame]:
-        """Retrieve candlestick data using WebSocket trade stream."""
+    async def get_candle_async(self, timeframe: Optional[str] = None, count: int = 100) -> Optional[pd.DataFrame]:
+        """Asynchronous method to retrieve candlestick data using WebSocket trade stream."""
         timeframe = timeframe or self.timeframe
         try:
             valid_timeframes = ['1m', '5m', '1h', '1d']
@@ -152,7 +160,7 @@ class BitMEXExchange(BaseExchange):
                 raise ValueError(f"Invalid timeframe. Supported: {', '.join(valid_timeframes)}")
 
             # Run async candle builder
-            candles = asyncio.run(self._build_candles(self.symbol, timeframe, count))
+            candles = await self._build_candles(self.symbol, timeframe, count)
 
             if not candles:
                 self.logger.warning("No candle data retrieved")
@@ -169,8 +177,16 @@ class BitMEXExchange(BaseExchange):
             self.logger.error(f"Error retrieving candle data: {str(e)}")
             return None
 
-        except Exception as e:
-            self.logger.error(f"Error retrieving candle data: {str(e)}")
+    def get_candle(self, timeframe: Optional[str] = None, count: int = 100) -> Optional[pd.DataFrame]:
+        """Synchronous wrapper for get_candle_async."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return loop.run_until_complete(self.get_candle_async(timeframe, count))
+            else:
+                return asyncio.run(self.get_candle_async(timeframe, count))
+        except RuntimeError as e:
+            self.logger.error(f"Event loop error: {str(e)}. Ensure get_candle is called within an async context.")
             return None
 
     def get_positions(self) -> List[Dict[str, Any]]:
