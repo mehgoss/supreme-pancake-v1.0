@@ -3,6 +3,8 @@ import json
 import logging
 import pandas as pd
 import bitmex
+import asyncio
+import websockets
 from datetime import datetime
 from .base_exchange import BaseExchange
 
